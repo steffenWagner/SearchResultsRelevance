@@ -1,0 +1,110 @@
+---
+title: "Checking Potential Regressors"
+author: "Steffen Wagner"
+date: "Friday, May 22, 2015"
+output: html_document
+---
+
+# Exploring the Crowdflower Data
+
+We'll start by using the readr library to read in the train and test sets
+```{r}
+library(readr)
+library(tm)
+
+dat <- read_csv("../data/train.csv")
+```
+We can see that train has 6 columns. median_relevance is the one that this competition's trying to predict.
+```{r}
+names(dat)
+```
+
+Umwandlung der Text_Elemnete in Kleinbuchstaben.
+```{r}
+colToLower <- c("query", "product_title", "product_description")
+for(col in colToLower){
+  dat[[col]] <- tolower(dat[[col]])
+}
+rm(colToLower)
+```
+
+
+Erzeugung einer neuen Variable `product_descr_prep`:
+
+```{r}
+prepText <- function(x){
+ removeWords(stripWhitespace(
+  removeNumbers(
+  removePunctuation(x))), 
+  words = stopwords(kind = "SMART"))
+}
+dat$product_descr_prep <- prepText(dat$product_description)
+```
+
+Vergleich der Textlängen vor und nach Aufbereitung:
+
+```{r}
+dat$nDescrRaw <- nchar(dat$product_description)
+dat$nDescrPrep <- nchar(dat$product_descr_prep)
+with(dat, smoothScatter(nDescrRaw, nDescrPrep))
+with(dat, hist(nDescrRaw - nDescrPrep, breaks = 100))
+boxplot(I(nDescrRaw - nDescrPrep) ~ median_relevance, data = dat, outline = FALSE)
+boxplot(I(nDescrPrep) ~ median_relevance, data = dat, outline = FALSE)
+```
+
+Analoge Aufbereitung der queries und titles:
+
+```{r}
+dat$query_prep <- prepText(dat$query)
+dat$product_title_prep <- prepText(dat$product_title)
+```
+
+
+Entspricht der Suchbegriff exakt dem Titel?
+```{r}
+table(dat$query == dat$product_title)
+table(dat$query_prep == dat$product_title_prep)
+```
+
+Taucht der Suchbegriff exakt im Titel auf?
+```{r}
+table(mapply(function(query, title) grepl(query, title), query = dat$query, title = dat$product_title))
+table(mapply(function(query, title) grepl(query, title), query = dat$query_prep, title = dat$product_title_prep))
+```
+
+
+Taucht der Suchbegriff exakt in der Description auf?
+```{r}
+table(mapply(function(query, title) grepl(query, title), query = dat$query, title = dat$product_description))
+table(mapply(function(query, title) grepl(query, title), query = dat$query_prep, title = dat$product_descr_prep))
+```
+
+Kreuztabelle: exakt im Titel vs exakt in der Description:
+```{r}
+addmargins(table(mapply(function(query, title) grepl(query, title), query = dat$query, title = dat$product_title),
+      mapply(function(query, title) grepl(query, title), query = dat$query, title = dat$product_description),
+      dnn = c("title", "description")))
+
+addmargins(table(mapply(function(query, title) grepl(query, title), query = dat$query_prep, title = dat$product_title_prep),
+      mapply(function(query, title) grepl(query, title), query = dat$query_prep, title = dat$product_descr_prep),
+      dnn = c("title", "description")))
+
+```
+
+Wie oft ist keine Description vorhanden?
+```{r}
+table(dat$product_description== "")
+assocplot(table(dat$product_description== "", dat$median_relevance))
+```
+
+Wie oft ist kein Titel vorhanden?
+
+```{r}
+table(dat$product_title == "")
+```
+
+
+
+
+View(dat[sample(NROW(dat), 20), c("median_relevance", "query", "product_title", "product_description")])
+

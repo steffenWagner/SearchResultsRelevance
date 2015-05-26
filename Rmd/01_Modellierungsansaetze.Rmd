@@ -1,0 +1,27 @@
+---
+title: "Ideen für Modellierung"
+output: html_document
+---
+
+Folgende Ansätze könnten für die Modellierung hilfreich sein:
+
+  - Verwendung externer Synonym-Wörterbücher zur besseren inhaltlichen Identifikation von Übereinstimmungen
+  - Filtern der Descriptions auf description-spezifische non-stop-Words über Informationskriterium 
+  - n-grams: kommt die exakte suchwort reigenfolge in description/title vor
+  - gewichtung mit varianz der übereinstimmung im trainingsdatensatz
+  - ordinales logit vs svm, decision trees, etc.
+  - SVD zur Identifikation latenter Zusammenhänge
+  - Levenstein-Distance?
+  - Identifikation und Zusammenfassen von Versionsnummern bei Produkten z.B. ('iPhone 5' erkennen)
+  - Was wird gesucht: Häufigkeitstabellen über queries
+  -Hierarchiche Klassifizierung der titel <-> query - Zusammenhänge:
+     1. query == titel
+     2. query im titel (ggf. an welcher Stelle?) 
+     3. anteil der suchbegriffe im titel (und an welcher Stelle?)
+  - Die Beschränkung der Modellschätzung auf Untersuchungseinheiten mit einer Varianz < 0.5 erhöht das in-Sample-Kappa auf dem vollen Trainingsdatensatz von aktuell 0.25 auf 0.3;
+  - Nach der Beschränkung auf UE mit geringer Varianz ist der Einfluss ob 'stripWhitespace' angewandt wird oder nicht nahezu verschwunden.
+  - Stemming aktuell nicht implementiert
+  - über tags of speech evtl. Adjektive identifizieren, die das Produkt näher spezifizieren und deshalb vorkommen sollten.
+  - query spezifisches text-mining
+  - zweistufiges hierarchiches binäres Logit (1/2)/(3/4)
+  
