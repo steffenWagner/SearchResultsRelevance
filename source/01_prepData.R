@@ -1,38 +1,42 @@
 # Funktionen zur Datenaufbereitung
-prepData <- function(dat, sep = " "){
-
-  # Hilfsfunktionen
-  # StopWord_Removal etc.
-  prepText <- function(x){(
-    removeWords(
-#       stemDocument(
-      removeNumbers(
-        removePunctuation(x)), 
-      words = stopwords(kind = "en")))
+prepText <- function (x, textCol = c("query", "product_title", "product_description")) {
+  
+  stemOwn <- function (x) {
+    stemIntern <- function (x) {
+      x <- str_trim(stripWhitespace(
+        removePunctuation(gsub("-|[0-9]", "", tolower(x)))))
+      paste(sapply(unlist(strsplit(x,
+                        split = " ")), wordStem),
+        collapse = " ")
+    }
+    sapply(x, stemIntern, USE.NAMES = FALSE)
   }
   
-
-  # Beginn der Aufbereitung
+  prepTextIntern <- function(text){
+    text <- str_to_lower(gsub("-", " ", text))
+    text <- removePunctuation(text, preserve_intra_word_dashes = FALSE)
+    text <- stemDocument(
+      str_trim(
+        stripWhitespace(
+          removeNumbers(
+            removeWords(text, stopwords("english"))))))
+    return(str_trim(text))
+  }
   
-  # Umwandeln der abhängigen in ordinalen Faktor
-  dat$median_relevance <- factor(dat$median_relevance, ordered = TRUE)
+  for(col in textCol){
+    x[[paste(col, "_prep", sep ="")]] <- stemOwn(x[[col]])
+  }
+  return(x)
+}
+
+newRegressors <- function(x, sep = " "){
+
  
-  # preparation der text-Elemente
-  colToLower <- c("query", "product_title", "product_description")
-  for(col in colToLower){
-    dat[[col]] <- tolower(dat[[col]])
-  }
-  
-  # Erstellen von aufbereiteten Spalten
-  for(col in colToLower){
-    dat[[paste(col, "prep", sep = "_")]] <- prepText(dat[[col]])
-  }
-  
   # entspricht der query dem Titel
   colQuery <- c("query", "query_prep")
   colTitle <- c("product_title", "product_title_prep")
   
-  datQueryEqTitle <- do.call(data.frame, mapply(function(query, title) dat[[query]] == dat[[title]], 
+  datQueryEqTitle <- do.call(data.frame, mapply(function(query, title) x[[query]] == x[[title]], 
                                query = colQuery, 
                                title = colTitle,
                                SIMPLIFY = FALSE))
@@ -42,8 +46,8 @@ prepData <- function(dat, sep = " "){
   datQueryInTitle <- do.call(data.frame, 
                              mapply(function(queryOut, titleOut) 
                                mapply(function(queryIn, titleIn) grepl(queryIn, titleIn),
-                                      queryIn = dat[[queryOut]], 
-                                      titleIn = dat[[titleOut]]),
+                                      queryIn = x[[queryOut]], 
+                                      titleIn = x[[titleOut]]),
                                     queryOut = colQuery,
                                     titleOut = colTitle,
                                     SIMPLIFY = FALSE))
@@ -62,8 +66,8 @@ prepData <- function(dat, sep = " "){
   
   datHowManyQueryInTitle <- do.call(data.frame, 
                                     mapply(howManyXInY, 
-                                           x = dat[colQuery], 
-                                           y = dat[colTitle],
+                                           x = x[colQuery], 
+                                           y = x[colTitle],
                                            MoreArgs = list(sep = sep),
                                            SIMPLIFY = FALSE))
   names(datHowManyQueryInTitle) <- paste("nTermInTitle", names(datHowManyQueryInTitle), sep = "_")
@@ -71,30 +75,32 @@ prepData <- function(dat, sep = " "){
   # Wie viele begriffe kammen vor?
   cols <- c(colQuery, colTitle)
   datNTerms <- do.call(data.frame, 
-                       lapply(dat[cols], function(x) sapply(strsplit(x, split = sep), NROW)))
+                       lapply(x[cols], function(x) sapply(strsplit(x, split = sep), NROW)))
   names(datNTerms) <- paste("nTerm_", names(datNTerms), sep = "")
   
   
   # Fasse Returnobjekt zusammen
-  dat <- data.frame(dat, datQueryEqTitle, datQueryInTitle, datHowManyQueryInTitle, datNTerms)
+  x <- data.frame(x, datQueryEqTitle, datQueryInTitle, datHowManyQueryInTitle, datNTerms)
   
   # Erstelle neue Variable
-  dat$ratioTermsInTitle_prep <- with(dat, cut(nTermInTitle_query_prep/nTerm_query_prep, 
+  x$ratioTermsInTitle_prep <- with(x, cut(nTermInTitle_query_prep/nTerm_query_prep, 
                                               breaks = c(0, 0.3, 0.5, 0.6, 0.8, 1),
                                               right = FALSE,
                                               include.lowest = TRUE))
   
   # Erstelle Master Klassierung für query <-> title Bezug
-  dat$queryKlass_prep <- ifelse(dat$eqTitle_query_prep, "queryEqTitle",
-                                ifelse(dat$inTitle_query_prep, "queryInTitle", 
-                                       dat$ratioTermsInTitle_prep))
+  x$queryKlass_prep <- ifelse(x$eqTitle_query_prep, "queryEqTitle",
+                                ifelse(x$inTitle_query_prep, "queryInTitle", 
+                                       x$ratioTermsInTitle_prep))
   
   # Erstelle Master Klassierung für query <-> title Bezug
-  dat$queryKlass <- ifelse(dat$eqTitle_query, "queryEqTitle",
-                                ifelse(dat$inTitle_query, "queryInTitle", 
-                                       dat$ratioTermsInTitle))
+  x$queryTitleKlass <- ifelse(x$eqTitle_query, "queryEqTitle",
+                                ifelse(x$inTitle_query, "queryInTitle", 
+                                       x$ratioTermsInTitle))
   
-  dat$noDescr <- dat$product_description == ""
+  x$noDescr <- x$product_description == ""
+  x$idRE <- factor(x$query)
   
-  return(dat)
+  
+  return(x)
 }

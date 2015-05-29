@@ -7,34 +7,61 @@ library(ordinal)
 library(nnet)
 library(Metrics)
 library(mgcv)
+library(SnowballC)
+library(stringr)
 
 # Import
 dat <- read_csv("data/train.csv") 
-test <- read_csv("data/test.csv")
+# test <- read_csv("data/test.csv")
 
 
-# Aufbereitung
+# Aufbereitung der Daten
 source(file = "source/01_prepData.R")
-dat <- prepData(dat)
-test <- prepData(test)
+dat <- newRegressors(prepText(dat))
+
+# Betrachte Posotion der queries im title
+set.seed(120308)
+subset <- sample(NROW(dat), size = 10)
+View(cbind(dat$query_prep[subset], dat$product_title_prep[subset]))
+
+x <- dat$query_prep[subset]
+y <- dat$product_title_prep[subset]
+
+x1 <- x[[9]]
+y1 <- y[[9]]
+
+getPositions <- function (x1, y1) {
+  terms <- strsplit(x1, split = " ")
+  splitList <- unlist(sapply(terms ,
+                             function(x) str_locate_all(y1, x), simplify = FALSE),
+                      recursive = FALSE)
+  terms <- unlist(terms)[sapply(splitList, NROW) > 0]
+  
+  splitList <- do.call(rbind, splitList)
+  rownames(splitList) <- terms
+  splitList
+}
+mapply(getPositions, x1 = x, y1 = y, USE.NAMES = TRUE, SIMPLIFY = FALSE)
+
+names(dat)
+# Anzahl Begriffe in den queries
+what <- query
+x$nQuery <- strsplit(x[[]])
+
+
 
 datList <- split(dat, f = dat$query_prep)
 testList <- split(test, f = test$query_prep)
 
 # x <- datList[[100]]
-tfidfScore <- function(x, what = "product_title") {
+tfidfScore <- function(x, what = "product_title_prep") {
   
   text <- x[[what]]
   
-  prepText <- function(text){
-    text <- gsub("-", " ", text)
-    text <- removePunctuation(text, preserve_intra_word_dashes = FALSE)
-    text <- stripWhitespace(stemDocument(removeNumbers(removeWords(text, stopwords("english")))))
-    return(text)
-  }
+
   
   # Aufbereitung der Description (bereits über prepData)
-  corpus <- Corpus(VectorSource(prepText(text)))
+  corpus <- Corpus(VectorSource(text))
   dtm <- weightTfIdf(DocumentTermMatrix(corpus))
   modelFrame <- as.data.frame(as.matrix(dtm))
   
