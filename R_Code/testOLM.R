@@ -36,36 +36,13 @@ train <- train %>%
   mutate(train = runif(n()) <= ratioTrain) %>% 
   ungroup
 
-# Entwicklung Abstandsmaß:
-n <- 1
-query <- train$query_prep[n]
-text <- train$product_title_prep[n]
-text <- train$product_description_prep[n]
 
-lapply(unlist(strsplit(query, split = " ")),
-                   function(x) x == unlist(strsplit(text, split = " ")))
-
-meanTermDist <- function (query, text) {
-  meanTermDistIntern <- function (query, text) {
-    mean(unlist(lapply(unlist(strsplit(query, split = " ")),
-                       function(x) min(which(x == unlist(strsplit(text, split = " ")))))))
-  }
-  mapply(meanTermDistIntern,
-         query = query,
-         text = text,
-         SIMPLIFY = TRUE,
-         USE.NAMES = FALSE)
-}
-
-distTitle <- meanTermDist(train$query_prep, train$product_title_prep)
-which(is.infinite(distTitle))
 
 # # Reduziere Terms in Train auf Terms in Test
 # source("source/02_trimTrainTextToTestText.R")
 # train$product_title_prep <- trimTrainTextToTestText(train = train, test = test, col = "product_title_prep")
 # train$product_description_prep <- trimTrainTextToTestText(train = train, test = test, col = "product_description_prep")
 # rm(trimTrainTextToTestText)
-
 
 # Jaccard-Koeffizient
 train$jaccTitle <- jaccard(train$query_prep, train$product_title_prep, weighting = weightBin)
@@ -74,9 +51,40 @@ train$jaccDescr <- jaccard(train$query, train$product_description, weighting = w
 test$jaccTitle <- jaccard(test$query_prep, test$product_title_prep, weighting = weightBin)
 test$jaccDescr <- jaccard(test$query, test$product_description, weighting = weightTf)
 
+
 # Erzeugung query-spezifischer Regressoren
 trainList <- split(train, f = train$query)
 testList <- split(test, f = test$query)[names(trainList)]
+
+# Jaccard-Koeffizient
+lmJaccard <- function (train) {
+  train <- train[train$train, ]
+  if(NROW(unique(train$median_relevance)) == 1){
+    list(lmTitle = lm(median_relevance ~ 1, data = train),
+         lmDescr = lm(median_relevance ~ 1, data = train))
+  } else {
+    list(lmTitle = step(lm(median_relevance ~ jaccTitle, data = train), trace = 0),
+         lmDescr = step(lm(median_relevance ~ jaccDescr, data = train), trace = 0))
+  }
+}
+predLmJaccard <- function (lmRes, dat) {
+  dat$predJaccTitle <- unlist(predict(lmRes$lmTitle, newdata = dat))
+  dat$predJaccDescr <- unlist(predict(lmRes$lmDescr, newdata = dat))
+  return(dat)
+}
+
+# Schätzung der Modelle
+lmJaccardList <- lapply(trainList, lmJaccard)
+
+# Prognose der Jaccard-Fits:
+trainList <- mapply(predLmJaccard, 
+                    lmRes = lmJaccardList,
+                    dat = trainList,
+                    SIMPLIFY = FALSE)
+testList <- mapply(predLmJaccard, 
+                    lmRes = lmJaccardList,
+                    dat = testList,
+                    SIMPLIFY = FALSE)
 
 # Definiere Funktion zur Erstellung einer dtm-Matrix
 dtm <- function(dat, columnName) {
@@ -99,14 +107,14 @@ rm(plsCoef)
 strCoef <- function (coef, coefMax) {
   threshold <- apply(coef, 3, function(x) sort(abs(x), decreasing = TRUE)[min(coefMax, dim(coef)[1])])
   for(layer in seq_len(dim(coef)[3])){
-    coef[ (coef[ ,1, layer]) < threshold[layer],1, layer] <- 0
+    coef[ abs(coef[ ,1, layer]) < threshold[layer],1, layer] <- 0
   }
   
   coef
 }
 
-plsCoefTitle <- lapply(plsCoefTitle, strCoef, coefMax = 5)
-plsCoefDescr <- lapply(plsCoefDescr, strCoef, coefMax = 5)
+plsCoefTitle <- lapply(plsCoefTitle, strCoef, coefMax = 10)
+plsCoefDescr <- lapply(plsCoefDescr, strCoef, coefMax = 10)
 
 # predPlsScore
 trainList <- predPLS(datList = trainList, 
@@ -142,14 +150,14 @@ test <- newRegressors(x = test,
                       colTitle = c("product_title", "product_title_prep"))
 rm(newRegressors)
 
-
+logitInv <- function(x) exp(x)/(exp(x) + 1)
 # Modellschätzung
 system.time(
   olm2 <- gam(as.numeric(median_relevance) ~ 
                
-              queryKlass_prep
-              # + s(jaccTitle, k = 4)
-              + s(jaccDescr, k = 4, by = noDescr)              
+              # queryKlass_prep
+              # + s(predJaccDescr, k = 4)
+              # + s(predJaccTitle, k = 4, by = noDescr)              
               + s(product_title_prep_predPLS_1, k = 4)
               + s(product_title_prep_predPLS_2, k = 4)
               + s(product_description_prep_predPLS_1, k = 4)
@@ -205,7 +213,7 @@ ScoreQuadraticWeightedKappa(classPred(scoreProb, optRes$par),
 test$predScore <- as.numeric(predict(olm2, newdata = test, type = "link"))
 test$prediction <- classPred(test$predScore, cuts = optRes$par)
 table(test$prediction)
-write.csv(test[ ,c("id", "prediction")], file = "submissions/150611_5.csv", row.names = FALSE)
+write.csv(test[ ,c("id", "prediction")], file = "submissions/150612_4.csv", row.names = FALSE)
 
 
 
